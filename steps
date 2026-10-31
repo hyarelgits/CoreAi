@@ -262,3 +262,65 @@ Shell
 docker start rag-fastapi rag-postgres rag-ollama
 
 This gives you two completely independent projects on the same VM without port conflicts.
+
+
+
+
+===========================================
+
+
+Run FastAPI on port 8001
+Shell
+docker run -d \
+--name rag-fastapi \
+--network rag-net \
+--add-host=host.docker.internal:host-gateway \
+-p 8001:8000 \
+rag-fastapi:v1
+5. Check container status
+Shell
+docker ps
+
+Look for:
+
+Plain Text
+rag-fastapi
+0.0.0.0:8001->8000/tcp
+ 
+6. If not running, check logs
+Shell
+docker logs rag-fastapi
+
+This is the most important command.
+
+Current target architecture
+Plain Text
+Project 1
+----------
+FastAPI : 8000
+Grafana : 3000
+Prometheus : 9090
+Node Exporter : 9100
+ 
+Project 2
+----------
+FastAPI : 8001
+PostgreSQL : 5433
+ChromaDB : Internal
+ 
+Shared Host
+-----------
+Ollama/Qwen : 11434
+Next command to run
+Shell
+docker rm -f rag_api
+docker run -d --name rag-fastapi --network rag-net --add-host=host.docker.internal:host-gateway -p 8001:8000 rag-fastapi:v1
+docker ps
+
+Then if it doesn't show Up, run:
+
+Shell
+docker logs rag-fastapi
+
+and share that output. That will tell us the exact remaining issue. 🚀
+
