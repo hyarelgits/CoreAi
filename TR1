@@ -1,0 +1,434 @@
+
+
+image.png
+I found something important in your screenshot. 👀
+
+You have two requirements files:
+
+
+
+requirements.txt
+requirements.txt
+Actually the screenshot shows:
+
+
+
+requirements.txt      (102 bytes)
+requirements.txt      (120 bytes)
+and also:
+
+
+
+dockerfile
+Dockerfile
+Linux treats these as different files because it's case-sensitive.
+
+First check which file Docker is using
+Open your Dockerfile:
+
+
+
+cat Dockerfile
+Look for:
+
+
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+or
+
+
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+Then check the contents
+
+
+cat requirements.txt
+and
+
+
+
+cat requirements.txt
+One of them may contain:
+
+
+
+prometheus-client
+and the other may not.
+
+Most likely problem
+You added:
+
+
+
+prometheus-client
+to one file, but Docker is installing from the other file.
+
+Verify immediately
+Run:
+
+
+
+cat requirements.txt
+I expect to see:
+
+
+
+fastapi
+uvicorn
+chromadb
+langchain
+langchain-community
+sentence-transformers
+ollama
+requests
+pydantic
+prometheus-client
+Then rebuild without cache
+
+
+docker compose down
+docker compose build --no-cache
+docker compose up -d
+Finally check the actual error
+Run:
+
+
+
+docker logs rag-project-fastapi --tail 20
+The current screenshot only shows:
+
+
+
+from prometheus_client import Counter
+but not the next line that contains the real error.
+
+So the next 2 commands to run are:
+
+
+
+cat requirements.txt
+and
+
+
+
+docker logs rag-project-fastapi --tail 20
+That will tell us exactly why the FastAPI container is still restarting.
+
+
+
+
+
+
+image.png
+Perfect. I found the issue. ✅
+
+Your Dockerfile is using:
+
+
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+So Docker installs packages from:
+
+
+
+requirements.txt
+Now check whether prometheus-client is actually inside that file.
+
+Run:
+
+
+
+cat requirements.txt
+You should see:
+
+
+
+fastapi
+uvicorn
+chromadb
+langchain
+langchain-community
+sentence-transformers
+ollama
+requests
+pydantic
+prometheus-client
+If you don't see:
+
+
+
+prometheus-client
+add it:
+
+
+
+nano requirements.txt
+add:
+
+
+
+prometheus-client
+save and exit.
+
+Then do a full rebuild:
+
+
+
+docker compose down
+docker compose build --no-cache
+docker compose up -d
+After that:
+
+
+
+docker ps
+If it still says:
+
+
+
+Restarting (1)
+run:
+
+
+
+docker logs rag-project-fastapi --tail 20
+I need the bottom 20 lines because your previous screenshot stopped at:
+
+
+
+from prometheus_client import Counter
+but not the actual error message.
+
+Next commands
+
+
+cat requirements.txt
+
+
+docker compose build --no-cache
+
+
+docker logs rag-project-fastapi --tail 20
+Most likely prometheus-client is missing from the requirements.txt that Docker is actually using.
+
+
+
+
+
+
+image.png
+
+2 images
+Good news ✅
+
+From your screenshots I can see:
+
+Dockerfile
+
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+requirements.txt
+
+
+fastapi
+uvicorn
+chromadb
+langchain
+langchain-community
+sentence-transformers
+ollama
+requests
+pydantic
+prometheus-client
+So prometheus-client is already present.
+
+Next Step
+You changed requirements.txt, but Docker may still be running an old image.
+
+Run:
+
+
+
+docker compose down
+Then:
+
+
+
+docker compose build --no-cache
+Wait until build completes.
+
+Then:
+
+
+
+docker compose up -d
+Check Status
+
+
+docker ps
+If FastAPI is still restarting:
+
+
+
+docker logs rag-project-fastapi --tail 50
+I need the last 50 lines.
+
+Why?
+Earlier log showed only:
+
+
+
+from prometheus_client import Counter
+but not the actual error message below it.
+
+Now that:
+
+
+
+prometheus-client
+is definitely in requirements.txt, the next log will show the real problem if one still exists.
+
+Run these three commands now
+
+
+docker compose down
+
+
+docker compose build --no-cache
+
+
+docker compose up -d
+Then check:
+
+
+
+docker ps
+If FastAPI still shows:
+
+
+
+Restarting (1)
+run:
+
+
+
+docker logs rag-project-fastapi --tail 50
+and the remaining error will be visible.
+
+
+
+
+
+
+image.png
+Perfect ✅
+
+The build is now working.
+
+From your screenshot:
+
+
+
+docker compose build --no-cache
+has reached:
+
+
+
+Collecting aiohttp ...
+Downloading torch-2.14...
+This means:
+
+✅ prometheus-client is being installed
+✅ Docker is rebuilding from scratch
+✅ No cache is being used
+✅ The previous import error is being fixed
+
+The reason it's taking time is:
+
+
+
+sentence-transformers
+    ↓
+torch
+    ↓
+550+ MB download
+Torch is a very large package.
+
+What to do now?
+Just let the build finish.
+
+After the build completes, run:
+
+
+
+docker compose up -d
+Then:
+
+
+
+docker ps
+Expected:
+
+
+
+rag-project-fastapi    Up
+rag-postgres          Up
+Not:
+
+
+
+Restarting (1)
+Then test
+
+
+curl http://localhost:8001
+Expected:
+
+
+
+{"status":"RAG API Running"}
+Then test metrics
+
+
+curl http://localhost:8001/metrics
+Expected output contains:
+
+
+
+fastapi_requests_total
+and
+
+
+
+rag_queries_total
+Your current status
+
+
+Step 1 ✅ Updated main.py
+Step 2 ✅ Added prometheus-client
+Step 3 ✅ Started clean rebuild
+Step 4 ⏳ Wait for build to finish
+Step 5 ⏳ Start containers
+Step 6 ⏳ Test /metrics
+Step 7 ⏳ Connect Prometheus
+Step 8 ⏳ Create Grafana panel
+So right now: do nothing except wait for the Docker build to finish. Once it reaches 100%, run:
+
+
+
+docker compose up -d
+and then test:
+
+
+
+curl http://localhost:8001/metrics
+That's your very next step. 🚀
+
+
+
+
+
