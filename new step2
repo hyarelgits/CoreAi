@@ -1,0 +1,347 @@
+Project 2 (RAG)
+
+Use:
+
+Plain Text
+FastAPI 8001
+Postgres 5433
+Ollama 11434 (reuse host Ollama)
+ChromaDB internal
+
+Recommended docker-compose.yml
+
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: rag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ragpass
+      POSTGRES_DB: ragdb
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  fastapi:
+    build: .
+    container_name: rag-fastapi
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+
+
+=============
+
+docker compose up -d
+
+Check Status
+Shell
+docker compose ps
+
+=================
+
+
+View Logs
+Shell
+docker compose logs -f
+
+or
+
+Shell
+docker logs rag-fastapi
+
+===================
+
+Open:
+
+Plain Text
+http://<VM-IP>:8001/docs
+
+Then test:
+
+Plain Text
+POST /query
+
+with:
+
+Plain Text
+Why is CPU usage high?
+
+
+======================
+
+
+Project 1
+----------
+FastAPI       8000
+Grafana       3000
+Prometheus    9090
+Node Exporter 9100
+
+Project 2
+----------
+FastAPI       8001
+PostgreSQL    5433
+ChromaDB      Internal
+
+Shared VM Service
+-----------------
+Ollama/Qwen   11434
+
+
+
+==============
+
+Do you need Ollama Container?
+
+
+
+
+
+
+Then in main.py use:
+
+Python
+OLLAMA_URL = "http://host.docker.internal:11434/api/generate"
+
+
+Why --add-host?
+
+Inside a container:
+
+Plain Text
+localhost
+
+means:
+
+Plain Text
+the container itself
+
+not the VM.
+
+This option creates:
+
+Plain Text
+host.docker.internal
+
+which points from the container back to the VM.
+
+So:
+
+Plain Text
+FastAPI Container
+|
+|
+v
+host.docker.internal:11434
+|
+v
+VM Ollama Server
+Test from inside the container
+
+After starting:
+
+Shell
+docker exec -it rag-fastapi bash
+
+Inside the container:
+
+Shell
+curl http://host.docker.internal:11434/api/tags
+
+Expected:
+
+JSON
+{
+"models": [...]
+}
+
+That confirms:
+
+Plain Text
+Docker Container
+↓
+Host VM Ollama
+✅
+Your final architecture
+Plain Text
+VM
+│
+├── Ollama + Qwen (11434)
+│
+├── Project 1
+│ ├── FastAPI (8000)
+│ ├── Grafana (3000)
+│ ├── Prometheus (9090)
+│ └── NodeExporter (9100)
+│
+└── Project 2
+├── FastAPI (8001)
+├── PostgreSQL (5433)
+└── ChromaDB
+
+This is the setup I would recommend for your VM: one Ollama instance on the VM shared by both projects, with each project isolated by ports and Docker networking. 🚀
+==============================
+
+Connect Query + Ollama
+
+main.py
+
+from fastapi import FastAPI
+import requests
+import chromadb
+
+app = FastAPI()
+
+client = chromadb.PersistentClient(path="./chroma_db")
+collection = client.get_or_create_collection("runbooks")
+
+OLLAMA_URL = "http://localhost:11434/api/generate"
+
+@app.get("/")
+def home():
+    return {"status": "RAG API Running"}
+
+@app.post("/query")
+def query_ai(question: str):
+
+    results = collection.query(
+        query_texts=[question],
+        n_results=1
+    )
+
+    context = results["documents"][0][0]
+
+    prompt = f"""
+    Context:
+    {context}
+
+    Question:
+    {question}
+    """
+
+    response = requests.post(
+        OLLAMA_URL,
+        json={
+            "model":"qwen2.5",
+            "prompt":prompt,
+            "stream":False
+        }
+    )
+
+    return response.json()
+
+
+
+-------------------
+
+
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
+
+Phase 7: Test from Swagger
+
+Open:
+
+Plain Text
+http://VM-IP:8001/docs
+
+
+Open:
+
+Plain Text
+POST /query
+
+Try:
+
+Plain Text
+Why is CPU usage high?
+
+
+=============
+
+Execute.
+
+Expected:
+
+Plain Text
+Question
+↓
+ChromaDB finds cpu_high.txt
+↓
+Context sent to Qwen
+↓
+Qwen generates answer
+↓
+Returned to Swagger
+
+
+==================
+
+
+Phase 8: Save History into PostgreSQL
+
+Later add table:
+
+CREATE TABLE query_logs (
+ id SERIAL PRIMARY KEY,
+ question TEXT,
+ answer TEXT,
+ created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+=============
+
+
+Phase 9: Dockerize
+
+After RAG works:
+
+
+
+
+================
+Update Ollama URL inside Docker:
+
+Python
+OLLAMA_URL = "http://host.docker.internal:11434/api/generate"
+
+Final Architecture
+Plain Text
+User
+|
+v
+FastAPI (8001)
+|
++--> ChromaDB
+|
++--> Ollama/Qwen (11434)
+|
++--> PostgreSQL (5433)
+|
+v
+Answer
+
+
+-------------------
+
+Your immediate next task is:
+
+Plain Text
+1. Create runbooks
+2. Run ingest.py
+3. Verify query.py
+4. Connect main.py to ChromaDB + Ollama
+5. Test POST /query from Swagger
+
