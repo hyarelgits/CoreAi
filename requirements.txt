@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+chromadb
+langchain
+langchain-community
+sentence-transformers
+ollama
+requests
+pydantic
