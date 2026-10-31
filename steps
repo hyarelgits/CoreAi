@@ -1,0 +1,264 @@
+Step 1: Create New Project Folder
+Shell
+mkdir -p /opt/rag-project
+cd /opt/rag-project
+
+Verify:
+
+Shell
+pwd
+
+Output:
+
+Plain Text
+/opt/rag-project
+Step 2: Create Dedicated Network
+Shell
+docker network create rag-net
+
+Verify:
+
+Shell
+docker network ls
+
+Output:
+
+Plain Text
+rag-net
+Step 3: Create PostgreSQL Container
+Shell
+docker run -d \
+--name rag-postgres \
+--network rag-net \
+-e POSTGRES_USER=admin \
+-e POSTGRES_PASSWORD=admin123 \
+-e POSTGRES_DB=ragdb \
+-p 5433:5432 \
+postgres:16
+
+Check:
+
+Shell
+docker ps
+
+Expected:
+
+Plain Text
+rag-postgres
+0.0.0.0:5433->5432
+Step 4: Verify PostgreSQL
+Shell
+docker logs rag-postgres
+ 
+
+Should show:
+
+Plain Text
+database system is ready to accept connections
+Step 5: Create Ollama Container
+
+If running Ollama in Docker:
+
+Shell
+docker run -d \
+--name rag-ollama \
+--network rag-net \
+-p 11434:11434 \
+ollama/ollama
+
+Check:
+
+Shell
+docker ps
+Step 6: Download Qwen Model
+
+Enter container:
+
+Shell
+docker exec -it rag-ollama bash
+
+Pull model:
+
+Shell
+ollama pull qwen2.5
+
+Verify:
+
+Shell
+ollama list
+
+Exit:
+
+Shell
+exit
+Step 7: Prepare FastAPI Project
+
+Go to project:
+
+Shell
+cd ~/rag_project
+ 
+
+Files:
+
+Plain Text
+main.py
+Dockerfile
+requirements.txt
+runbooks/
+Step 8: Build Image
+Shell
+docker build -t rag-fastapi:v1 .
+
+Verify:
+
+Shell
+docker images
+
+Expected:
+
+Plain Text
+rag-fastapi v1
+Step 9: Remove Old Failed Container
+
+You currently have:
+
+Plain Text
+rag_api (Created)
+
+Remove:
+
+Shell
+docker rm -f rag_api
+
+Verify:
+
+Shell
+docker ps -a
+
+Should disappear.
+
+Step 10: Run FastAPI on Port 8001
+Shell
+docker run -d \
+--name rag-fastapi \
+--network rag-net \
+-p 8001:8000 \
+rag-fastapi:v1
+
+Check:
+
+Shell
+docker ps
+
+Expected:
+
+Plain Text
+rag-fastapi
+0.0.0.0:8001->8000
+Step 11: Check Logs
+Shell
+docker logs rag-fastapi
+ 
+
+Expected:
+
+Plain Text
+Uvicorn running on http://0.0.0.0:8000
+Step 12: Test API
+Shell
+curl http://localhost:8001/docs
+
+Browser:
+
+Plain Text
+http://SERVER-IP:8001/docs
+Step 13: Connect FastAPI to PostgreSQL
+
+In your Python code:
+
+Python
+DATABASE_URL = "postgresql://admin:admin123@rag-postgres:5432/ragdb"
+
+Notice:
+
+Plain Text
+rag-postgres
+
+is the container name inside rag-net.
+
+Step 14: Connect FastAPI to Ollama
+
+If Ollama is containerized:
+
+Python
+OLLAMA_URL = "http://rag-ollama:11434"
+
+If Ollama runs directly on VM:
+
+Python
+OLLAMA_URL = "http://host.docker.internal:11434"
+Step 15: Verify Isolation
+
+Check networks:
+
+Shell
+docker network inspect rag-net
+
+Should show:
+
+Plain Text
+rag-fastapi
+rag-postgres
+rag-ollama
+
+Only Project 2 containers.
+
+Final Layout
+Plain Text
+VM
+│
+├── PROJECT 1
+│ ├── FastAPI :8000
+│ ├── Grafana :3000
+│ ├── Prometheus :9090
+│ └── NodeExporter :9100
+│
+└── PROJECT 2
+├── FastAPI :8001
+├── PostgreSQL :5433
+├── Ollama :11434
+└── ChromaDB : Internal
+Useful Commands
+
+See all containers:
+
+Shell
+docker ps
+
+See all networks:
+
+Shell
+docker network ls
+
+See container logs:
+
+Shell
+docker logs rag-fastapi
+
+Enter container:
+
+Shell
+docker exec -it rag-fastapi bash
+
+Stop Project 2:
+
+Shell
+docker stop rag-fastapi rag-postgres rag-ollama
+
+Start Project 2:
+
+Shell
+docker start rag-fastapi rag-postgres rag-ollama
+
+This gives you two completely independent projects on the same VM without port conflicts.
