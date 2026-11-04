@@ -1,0 +1,10 @@
+Possible Causes:
+- Too many running processes
+- Infinite loop in application
+- Insufficient CPU allocation
+- Background jobs
+
+Solutions:
+- Check top processes
+- Restart application
+- Scale infrastructure

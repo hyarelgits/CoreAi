@@ -1,0 +1,52 @@
+from fastapi import FastAPI
+from fastapi import Response
+import requests
+
+from prometheus_client import Counter
+from prometheus_client import generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST
+
+app = FastAPI()
+
+OLLAMA_URL = "http://host.docker.internal:11434/api/generate"
+
+# Metrics
+REQUEST_COUNT = Counter(
+    "fastapi_requests_total",
+    "Total API Requests"
+)
+
+RAG_QUERY_COUNT = Counter(
+    "rag_queries_total",
+    "Total RAG Queries"
+)
+
+@app.get("/")
+def home():
+    return {"status": "RAG API Running"}
+
+@app.post("/query")
+def query_ai(question: str):
+
+    REQUEST_COUNT.inc()
+    RAG_QUERY_COUNT.inc()
+
+    payload = {
+        "model": "qwen2.5",
+        "prompt": question,
+        "stream": False
+    }
+    
+    response = requests.post(
+        OLLAMA_URL,
+        json=payload
+    )
+
+    return response.json()
+
+@app.get("/metrics")
+def metrics():
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
